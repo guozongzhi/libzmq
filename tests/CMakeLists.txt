@@ -323,6 +323,25 @@ foreach(test ${tests})
   endif()
 endforeach()
 
+# Validate the Rust rewrite planning document and the public API anchors it references.
+add_test(
+  NAME test_rust_rewrite_plan
+  COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${ZeroMQ_SOURCE_DIR} -P ${CMAKE_CURRENT_LIST_DIR}/check_rust_rewrite_plan.cmake)
+set_tests_properties(test_rust_rewrite_plan PROPERTIES TIMEOUT 10)
+
+if(ENABLE_RUST_REWRITE AND CARGO_PROGRAM)
+  add_test(
+    NAME test_rust_rewrite_probe
+    COMMAND ${CMAKE_COMMAND} --build ${ZeroMQ_BINARY_DIR} --target rust_rewrite_probe)
+  set_tests_properties(test_rust_rewrite_probe PROPERTIES TIMEOUT 120)
+
+  add_test(
+    NAME test_rust_workspace
+    COMMAND ${CMAKE_COMMAND} -E env CARGO_TARGET_DIR=${RUST_TARGET_DIR}
+            ${CARGO_PROGRAM} test --manifest-path ${RUST_WORKSPACE_DIR}/Cargo.toml --workspace --locked)
+  set_tests_properties(test_rust_workspace PROPERTIES TIMEOUT 120)
+endif()
+
 # override timeout for these tests
 set_tests_properties(test_heartbeats PROPERTIES TIMEOUT 60)
 

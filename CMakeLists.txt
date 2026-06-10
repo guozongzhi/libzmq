@@ -1334,6 +1334,61 @@ endif()
 option(BUILD_SHARED "Whether or not to build the shared object" ON)
 option(BUILD_STATIC "Whether or not to build the static archive" ON)
 
+option(ENABLE_RUST_REWRITE "Build Rust rewrite scaffolding and migrated Rust slices" OFF)
+option(RUST_REWRITE_STRICT "Require Rust rewrite scaffolding to build when ENABLE_RUST_REWRITE is enabled" OFF)
+
+if(ENABLE_RUST_REWRITE)
+  find_program(CARGO_PROGRAM cargo)
+  if(NOT CARGO_PROGRAM)
+    if(RUST_REWRITE_STRICT)
+      message(FATAL_ERROR "ENABLE_RUST_REWRITE requires Cargo, but cargo was not found")
+    else()
+      message(WARNING "ENABLE_RUST_REWRITE is enabled, but cargo was not found; skipping Rust scaffold build")
+    endif()
+  else()
+    set(RUST_WORKSPACE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust")
+    set(RUST_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}/rust/target")
+    set(RUST_REWRITE_PROBE_STAMP "${CMAKE_CURRENT_BINARY_DIR}/rust/rust_rewrite_probe.stamp")
+    if(WIN32)
+      set(RUST_FFI_STATICLIB "${RUST_TARGET_DIR}/debug/libzmq_ffi.lib")
+    else()
+      set(RUST_FFI_STATICLIB "${RUST_TARGET_DIR}/debug/liblibzmq_ffi.a")
+    endif()
+
+    add_custom_command(
+      OUTPUT ${RUST_REWRITE_PROBE_STAMP}
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/rust"
+      COMMAND ${CMAKE_COMMAND} -E env CARGO_TARGET_DIR=${RUST_TARGET_DIR}
+              ${CARGO_PROGRAM} build --manifest-path ${RUST_WORKSPACE_DIR}/Cargo.toml --locked -p libzmq-ffi
+      COMMAND ${CMAKE_COMMAND} -E touch ${RUST_REWRITE_PROBE_STAMP}
+      DEPENDS
+              ${RUST_WORKSPACE_DIR}/Cargo.toml
+              ${RUST_WORKSPACE_DIR}/Cargo.lock
+              ${RUST_WORKSPACE_DIR}/libzmq-core/Cargo.toml
+              ${RUST_WORKSPACE_DIR}/libzmq-core/src/lib.rs
+              ${RUST_WORKSPACE_DIR}/libzmq-core/src/atomic_counter.rs
+              ${RUST_WORKSPACE_DIR}/libzmq-core/src/context.rs
+              ${RUST_WORKSPACE_DIR}/libzmq-core/src/message.rs
+              ${RUST_WORKSPACE_DIR}/libzmq-core/src/poller.rs
+              ${RUST_WORKSPACE_DIR}/libzmq-core/src/socket.rs
+              ${RUST_WORKSPACE_DIR}/libzmq-core/src/version.rs
+              ${RUST_WORKSPACE_DIR}/libzmq-core/src/z85.rs
+              ${RUST_WORKSPACE_DIR}/libzmq-ffi/Cargo.toml
+              ${RUST_WORKSPACE_DIR}/libzmq-ffi/src/lib.rs
+              ${RUST_WORKSPACE_DIR}/libzmq-protocol/Cargo.toml
+              ${RUST_WORKSPACE_DIR}/libzmq-protocol/src/lib.rs
+              ${RUST_WORKSPACE_DIR}/libzmq-protocol/src/zmtp.rs
+              ${RUST_WORKSPACE_DIR}/libzmq-transport/Cargo.toml
+              ${RUST_WORKSPACE_DIR}/libzmq-transport/src/lib.rs
+              ${RUST_WORKSPACE_DIR}/libzmq-transport/src/inproc.rs
+      WORKING_DIRECTORY ${RUST_WORKSPACE_DIR}
+      COMMENT "Building Rust rewrite probe"
+      VERBATIM)
+
+    add_custom_target(rust_rewrite_probe ALL DEPENDS ${RUST_REWRITE_PROBE_STAMP})
+  endif()
+endif()
+
 if(MSVC)
   # Suppress linker warnings caused by #ifdef omission of file content.
   set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4221")
@@ -1492,7 +1547,18 @@ foreach(target ${build_targets})
   if(ENABLE_DRAFTS)
     target_compile_definitions(${target} PUBLIC ZMQ_BUILD_DRAFT_API)
   endif()
+
+  if(ENABLE_RUST_REWRITE AND CARGO_PROGRAM)
+    target_compile_definitions(${target} PRIVATE ZMQ_HAVE_RUST_REWRITE)
+  endif()
 endforeach()
+
+if(ENABLE_RUST_REWRITE AND CARGO_PROGRAM)
+  foreach(target ${target_outputs})
+    add_dependencies(${target} rust_rewrite_probe)
+    target_link_libraries(${target} ${RUST_FFI_STATICLIB})
+  endforeach()
+endif()
 
 if(BUILD_SHARED)
   target_link_libraries(libzmq ${CMAKE_THREAD_LIBS_INIT})

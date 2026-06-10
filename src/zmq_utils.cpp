@@ -20,6 +20,19 @@
 #include "sodium.h"
 #endif
 
+#if defined ZMQ_HAVE_RUST_REWRITE
+extern "C" {
+char *zmq_rs_z85_encode (char *dest_, const uint8_t *data_, size_t size_);
+uint8_t *zmq_rs_z85_decode (uint8_t *dest_, const char *string_);
+void *zmq_rs_atomic_counter_new (void);
+void zmq_rs_atomic_counter_set (void *counter_, int value_);
+int zmq_rs_atomic_counter_inc (void *counter_);
+int zmq_rs_atomic_counter_dec (void *counter_);
+int zmq_rs_atomic_counter_value (void *counter_);
+void zmq_rs_atomic_counter_destroy (void **counter_p_);
+}
+#endif
+
 void zmq_sleep (int seconds_)
 {
 #if defined ZMQ_HAVE_WINDOWS
@@ -100,6 +113,12 @@ static uint8_t decoder[96] = {
 
 char *zmq_z85_encode (char *dest_, const uint8_t *data_, size_t size_)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    char *result = zmq_rs_z85_encode (dest_, data_, size_);
+    if (result == NULL)
+        errno = EINVAL;
+    return result;
+#else
     if (size_ % 4 != 0) {
         errno = EINVAL;
         return NULL;
@@ -123,6 +142,7 @@ char *zmq_z85_encode (char *dest_, const uint8_t *data_, size_t size_)
     assert (char_nbr == size_ * 5 / 4);
     dest_[char_nbr] = 0;
     return dest_;
+#endif
 }
 
 
@@ -134,6 +154,12 @@ char *zmq_z85_encode (char *dest_, const uint8_t *data_, size_t size_)
 
 uint8_t *zmq_z85_decode (uint8_t *dest_, const char *string_)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    uint8_t *result = zmq_rs_z85_decode (dest_, string_);
+    if (result == NULL)
+        errno = EINVAL;
+    return result;
+#else
     unsigned int byte_nbr = 0;
     unsigned int char_nbr = 0;
     uint32_t value = 0;
@@ -179,6 +205,7 @@ uint8_t *zmq_z85_decode (uint8_t *dest_, const char *string_)
 error_inval:
     errno = EINVAL;
     return NULL;
+#endif
 }
 
 //  --------------------------------------------------------------------------
@@ -254,23 +281,35 @@ int zmq_curve_public (char *z85_public_key_, const char *z85_secret_key_)
 
 void *zmq_atomic_counter_new (void)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    return zmq_rs_atomic_counter_new ();
+#else
     zmq::atomic_counter_t *counter = new (std::nothrow) zmq::atomic_counter_t;
     alloc_assert (counter);
     return counter;
+#endif
 }
 
-//  Se the value of the atomic counter
+//  Set the value of the atomic counter
 
 void zmq_atomic_counter_set (void *counter_, int value_)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    zmq_rs_atomic_counter_set (counter_, value_);
+#else
     (static_cast<zmq::atomic_counter_t *> (counter_))->set (value_);
+#endif
 }
 
 //  Increment the atomic counter, and return the old value
 
 int zmq_atomic_counter_inc (void *counter_)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    return zmq_rs_atomic_counter_inc (counter_);
+#else
     return (static_cast<zmq::atomic_counter_t *> (counter_))->add (1);
+#endif
 }
 
 //  Decrement the atomic counter and return 1 (if counter >= 1), or
@@ -278,20 +317,32 @@ int zmq_atomic_counter_inc (void *counter_)
 
 int zmq_atomic_counter_dec (void *counter_)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    return zmq_rs_atomic_counter_dec (counter_);
+#else
     return (static_cast<zmq::atomic_counter_t *> (counter_))->sub (1) ? 1 : 0;
+#endif
 }
 
 //  Return actual value of atomic counter
 
 int zmq_atomic_counter_value (void *counter_)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    return zmq_rs_atomic_counter_value (counter_);
+#else
     return (static_cast<zmq::atomic_counter_t *> (counter_))->get ();
+#endif
 }
 
 //  Destroy atomic counter, and set reference to NULL
 
 void zmq_atomic_counter_destroy (void **counter_p_)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    zmq_rs_atomic_counter_destroy (counter_p_);
+#else
     delete (static_cast<zmq::atomic_counter_t *> (*counter_p_));
     *counter_p_ = NULL;
+#endif
 }

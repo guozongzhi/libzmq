@@ -1,0 +1,344 @@
+= libzmq Rust 重构设计文档
+
+本文档描述将 libzmq 逐步重构为 Rust 实现的总体方案。重构必须先搭建整体框架，再按子模块分阶段迁移；每一步都要保持现有 C ABI 可用，并在迁移过程中持续修复编译和测试问题。
+
+== 目标
+
+* 保持 `include/zmq.h` 声明的公开 C ABI、源码级 API、常量值、结构体大小和函数签名兼容。
+* 保持当前库名、包元数据、默认构建产物和既有平台 feature gate，除非维护者显式启用 Rust 路径。
+* 继续把现有 C/C++ 测试作为每个 Rust 子模块的兼容性验收测试。
+* 将消息、上下文、socket、poller、transport 和协议层中所有权复杂、容易出现内存安全问题的逻辑逐步迁移到 Rust。
+* 每个迁移切片都必须能独立编译、独立测试，并能通过 CMake 开关回滚到 C++ 实现。
+
+== 非目标
+
+* 不重新设计 ZeroMQ socket 语义、ZMTP 线协议或现有错误码语义。
+* 不要求应用调用 Rust 专用 API。
+* 不在第一阶段删除 CMake、autotools 或已有 C++ 实现。
+* 不在单个补丁中迁移所有 transport。
+* 不在没有 ABI 验证和回滚开关的情况下替换 `zmq_*` 公开符号。
+
+== 总体框架
+
+重构按“文档 -> 编译框架 -> 子模块迁移 -> 行为替换”的顺序推进：
+
+. 先维护本文档，并通过自动化测试校验文档中的 API 锚点仍然存在。
+. 新增 `rust/` workspace，只导出内部 probe 符号，验证 Rust 编译链路，不替换任何公开 `zmq_*` 符号。
+. 以 `ENABLE_RUST_REWRITE` CMake 开关启用 Rust 构建；默认关闭，避免影响现有用户。
+. 按消息、上下文、socket/inproc、poller、TCP/IPC、协议/安全机制、可选 transport 的顺序迁移。
+. 每个子模块先写 Rust 单元测试，再接入 C ABI shim，最后运行对应 C/C++ 兼容测试。
+. 迁移期间同时修复编译问题；任何子模块不能通过编译时，不允许替换生产路径。
+
+== 兼容性契约
+
+重构必须把以下接口视为兼容性锚点：
+
+[cols="1,3"]
+|===
+| 锚点 | 兼容性要求
+
+| `include/zmq.h`
+| 导出名称、常量值、函数签名、opaque handle、公开结构体大小和布局保持 ABI 兼容。
+
+| `src/zmq.cpp`
+| 继续作为 C ABI 入口的兼容 shim。迁移期间可以把选定函数转发到 Rust，但在 Rust 完整替代之前仍保留该入口层。
+
+| `src/msg.hpp` 和 `src/msg.cpp`
+| 消息所有权、VSM/LMSG/CMSG、close、metadata、routing id、group 和 flag 行为保持可观察兼容。
+
+| `src/ctx.hpp` 和 `src/ctx.cpp`
+| context option 默认值、socket registry、endpoint registry、shutdown 和 term 行为保持兼容。
+
+| `src/socket_base.hpp` 和 `src/socket_base.cpp`
+| socket 类型行为、mailbox 命令处理、pipe 连接、endpoint bind/connect 以及 option 校验保持兼容。
+
+| Polling APIs
+| `zmq_poll`、`zmq_ppoll` 和 draft poller API 的事件、超时、fd/socket 混合轮询和中断行为保持兼容。
+|===
+
+== Rust workspace 布局
+
+Rust 代码放在 `rust/` workspace 下：
+
+[source,text]
+----
+rust/
+  Cargo.toml
+  libzmq-core/
+    Cargo.toml
+    src/
+      context.rs
+      endpoint.rs
+      error.rs
+      lib.rs
+      message.rs
+      poller.rs
+      socket.rs
+  libzmq-ffi/
+    Cargo.toml
+    src/lib.rs
+  libzmq-protocol/
+    Cargo.toml
+    src/
+      codec.rs
+      zmtp.rs
+  libzmq-transport/
+    Cargo.toml
+    src/
+      inproc.rs
+      ipc.rs
+      tcp.rs
+----
+
+子模块职责：
+
+* `libzmq-core`：承载 message、context、socket、pipe、mailbox、endpoint 和 poller 的核心状态机。
+* `libzmq-ffi`：承载 C ABI 边界，负责 C 指针、opaque handle、`errno` 和 Rust `Result` 的转换。
+* `libzmq-protocol`：承载 ZMTP encoder/decoder、greeting、command 和安全机制集成点。
+* `libzmq-transport`：优先实现 inproc，然后迁移 TCP 和 IPC；UDP、WS/WSS、VMCI、VSOCK、TIPC、PGM 作为独立 feature 处理。
+
+== FFI 和 unsafe 策略
+
+Rust 代码必须把 unsafe 控制在 `libzmq-ffi` 和小型平台适配层中。每个 unsafe block 都必须用注释说明：
+
+* 指针来源、是否允许为空、是否已校验；
+* 对齐要求和初始化字节范围；
+* 所有权是转移、借用还是共享；
+* 是否可能设置 `errno`；
+* 是否允许并发访问，以及同步由谁负责。
+
+所有导出的 C ABI 函数在解引用前必须校验空指针，并返回与 C++ 实现一致的错误码。第一阶段只允许导出内部 probe，例如 `zmq_rs_version_probe`，不得与现有公开 `zmq_*` 符号冲突。
+
+== 子模块迁移阶段
+
+=== 阶段 0：整体框架和编译环境
+
+* 新增本文档并纳入测试。
+* 新增 Cargo workspace 和最小 Rust crate 骨架。
+* 新增 `ENABLE_RUST_REWRITE` 和 `RUST_REWRITE_STRICT` CMake 开关。
+* CMake 启用 Rust 时通过 Cargo 编译 `libzmq-ffi` probe。
+* 先把边界最小、无 socket 依赖的 `zmq_atomic_counter_*` 工具 API 作为第一条 Rust-backed 公共调用路径；C++ 公开符号保留，内部转发到 `zmq_rs_atomic_counter_*`。
+* 随后迁移同样无 socket/context 依赖的 `zmq_version`，验证 `src/zmq.cpp` 的 C ABI shim 也能按 opt-in 方式转发到 Rust。
+* CI 先执行文档不变量测试、`cargo test --workspace`、`test_atomics`、`test_ancillaries` 和 `test_base85`。
+
+=== 阶段 0.5：Atomic counter 工具 API
+
+`zmq_atomic_counter_*` 不依赖 context、socket、pipe 或协议状态，是最适合作为第一条直接 Rust-backed C API 路径的模块。公开符号仍由 C++ 导出，启用 `ENABLE_RUST_REWRITE` 时转发到 Rust 内部符号。
+
+候选 API：
+
+* `zmq_atomic_counter_new`
+* `zmq_atomic_counter_set`
+* `zmq_atomic_counter_inc`
+* `zmq_atomic_counter_dec`
+* `zmq_atomic_counter_value`
+* `zmq_atomic_counter_destroy`
+
+验收标准：
+
+* 默认 C++ 构建不变。
+* Rust opt-in 构建可以链接 `libzmq-ffi` staticlib。
+* `test_atomics` 在 C++ 默认路径和 Rust opt-in 路径都通过。
+
+=== 阶段 0.6：Version API
+
+`zmq_version` 是无状态 API，适合作为 `src/zmq.cpp` 中第一条 opt-in Rust-backed C ABI shim。公开符号仍由 C++ 导出；启用 Rust rewrite 后，C++ wrapper 调用 `zmq_rs_version` 写入 major/minor/patch。
+
+验收标准：
+
+* Rust 常量与 `include/zmq.h` 中的 `ZMQ_VERSION_MAJOR`、`ZMQ_VERSION_MINOR`、`ZMQ_VERSION_PATCH` 同步。
+* `test_ancillaries` 在默认 C++ 路径和 Rust opt-in 路径都通过。
+
+=== 阶段 0.7：Z85 codec
+
+`zmq_z85_encode` 和 `zmq_z85_decode` 是纯编码/解码 API，不依赖 socket、context、线程或 I/O。启用 Rust rewrite 后，C++ public wrapper 转发到 `zmq_rs_z85_encode` / `zmq_rs_z85_decode`，并继续在 C++ wrapper 中设置 `errno = EINVAL`。
+
+验收标准：
+
+* RFC32 `HelloWorld` 测试向量保持兼容。
+* 非 4 字节倍数 encode、非 5 字节倍数 decode、非法字符和溢出值继续返回 `NULL` 并设置 `EINVAL`。
+* `test_base85` 在默认 C++ 路径和 Rust opt-in 路径都通过。
+
+=== 阶段 1：消息模块
+
+消息模块是第一批实现目标，因为它边界清晰，并且所有 socket 路径都会使用。
+
+候选 API：
+
+* `zmq_msg_init`
+* `zmq_msg_init_size`
+* `zmq_msg_init_buffer`
+* `zmq_msg_init_data`
+* `zmq_msg_close`
+* `zmq_msg_move`
+* `zmq_msg_copy`
+* `zmq_msg_data`
+* `zmq_msg_size`
+* `zmq_msg_get`
+* `zmq_msg_set`
+* `zmq_msg_gets`
+* `zmq_msg_more`
+* `zmq_msg_set_routing_id`
+* `zmq_msg_routing_id`
+* `zmq_msg_set_group`
+* `zmq_msg_group`
+
+验收标准：
+
+* `sizeof(zmq_msg_t)` 和 alignment 不变。
+* zero-copy finalizer 只执行一次。
+* copy、move、close、metadata、routing id、group 和 more flag 行为与 `src/msg.cpp` 一致。
+* 现有 message 相关 C/C++ 测试不修改源码即可通过。
+
+=== 阶段 2：Context 生命周期
+
+Context 在 Rust 中建模为显式状态机：
+
+* `Running`
+* `ShuttingDown`
+* `Terminating`
+* `Terminated`
+
+候选 API：
+
+* `zmq_ctx_new`
+* `zmq_ctx_set`
+* `zmq_ctx_get`
+* `zmq_ctx_shutdown`
+* `zmq_ctx_term`
+* `zmq_ctx_set_ext`
+* `zmq_ctx_get_ext`
+
+验收标准：
+
+* context option 默认值与 C++ 实现一致。
+* socket 能以旧行为观察 shutdown 和 term。
+* endpoint registry、socket registry 和 IO thread registry teardown 顺序确定。
+* 线程创建和关闭继续受现有 feature gate 控制。
+
+=== 阶段 3：Socket base 和 inproc transport
+
+将 socket base、pipe 协调、mailbox 命令和 inproc transport 作为第一个端到端收发切片。该阶段不依赖 OS 网络，适合先验证 Rust 所有权模型。
+
+候选 API：
+
+* `zmq_socket`
+* `zmq_close`
+* `zmq_bind`
+* `zmq_connect`
+* `zmq_unbind`
+* `zmq_disconnect`
+* `zmq_send`
+* `zmq_recv`
+* `zmq_msg_send`
+* `zmq_msg_recv`
+
+验收标准：
+
+* PAIR、REQ/REP、PUB/SUB、DEALER/ROUTER、PUSH/PULL、CLIENT/SERVER、RADIO/DISH、SCATTER/GATHER、PEER、CHANNEL 的 inproc 行为保持兼容。
+* 现有 inproc 相关测试通过。
+* mailbox wakeup 行为同时由 Rust 单测和 C/C++ 测试覆盖。
+
+=== 阶段 4：Polling
+
+socket readiness 稳定后再迁移 poller。
+
+候选 API：
+
+* `zmq_poll`
+* `zmq_ppoll`
+* `zmq_poller_new`
+* `zmq_poller_destroy`
+* `zmq_poller_add`
+* `zmq_poller_modify`
+* `zmq_poller_remove`
+* `zmq_poller_wait`
+* `zmq_poller_wait_all`
+* fd-based draft poller variants
+
+验收标准：
+
+* timeout、EINTR、socket readiness、fd readiness 和 socket/fd 混合轮询行为与现有测试一致。
+* draft poller API 继续受 `ENABLE_DRAFTS` 控制。
+
+=== 阶段 5：TCP 和 IPC transport
+
+先迁移 TCP，再迁移 IPC。TCP 同时覆盖 POSIX 和 Windows；IPC 继续按平台支持启用。
+
+验收标准：
+
+* 地址解析、通配 endpoint、reconnect、bind-after-connect、monitor event、last endpoint、source address、TCP accept filter 和 use-fd 行为保持兼容。
+* IPC 继续受平台 feature gate 控制。
+
+=== 阶段 6：协议和安全机制
+
+transport 稳定后迁移 ZMTP encoder/decoder 和安全机制。
+
+候选机制：
+
+* NULL
+* PLAIN
+* CURVE
+* GSSAPI
+
+验收标准：
+
+* 机制协商、ZAP、CURVE keypair/public derivation 和协议 fuzzer 兼容。
+* ZMTP 1.0、2.0、3.0、3.1 的 wire compatibility 不变。
+
+=== 阶段 7：可选 transport 和 draft API
+
+以下模块必须独立 feature gate，并在移除 C++ 实现前给出支持声明和回滚方案：
+
+* UDP
+* WS/WSS
+* VMCI
+* VSOCK
+* TIPC
+* PGM
+* draft-only APIs
+
+== 构建集成计划
+
+CMake 继续作为主构建入口：
+
+* `ENABLE_RUST_REWRITE` 默认 `OFF`，用于启用 Rust scaffold 或已迁移切片。
+* `RUST_REWRITE_STRICT` 默认 `OFF`，用于 CI 中要求 Cargo 必须存在并且 Rust 测试必须通过。
+* 启用 Rust 时使用 `find_program(CARGO cargo)` 查找 Cargo。
+* 用 custom target 调用 `cargo build --manifest-path rust/Cargo.toml -p libzmq-ffi` 编译内部 probe。
+* 在真正替换子模块前，不把 Rust 产物链接到 `libzmq`，避免改变默认 ABI。
+* autotools 第一阶段只分发 Rust 文件，不启用 Rust 编译；若 Rust 成为发布要求，再补齐 autotools 检测。
+
+== 测试策略
+
+每个迁移补丁至少覆盖以下层级：
+
+* Rust 单元测试：覆盖新增 Rust 状态机和边界条件。
+* C ABI 测试：通过 `include/zmq.h` 调用，不绕过公开 API。
+* 既有 C/C++ 集成测试：验证行为兼容。
+* sanitizer 或 valgrind：在支持的平台上检查 mixed C++/Rust 边界。
+* 文档不变量测试：保证本文档中的 API 锚点、阶段名称和构建开关没有失效。
+
+优先复用已有测试名和 helper。只有内部实现细节才新增 Rust-only 测试；任何 C++ 切片被删除前，都必须先通过公开 C ABI 测试证明兼容。
+
+== 回滚策略
+
+每个子模块必须保留回滚点：
+
+* 通过 CMake 选项禁用对应 Rust 切片。
+* 回滚不需要修改 public header。
+* C++ 实现至少保留到 Rust 路径通过一个发布周期，或由维护者显式批准删除。
+* C++ 路径和 Rust 路径并存期间，CI 应尽量比较两者行为。
+
+== Review checklist
+
+接受 Rust 迁移补丁前必须检查：
+
+* 公开 C ABI 未改变。
+* 新增 unsafe 代码有注释、范围小、可审计。
+* `errno` 和空指针处理与 C++ 路径一致。
+* 所有权转移在 FFI 边界明确。
+* 默认构建不受影响。
+* `cargo test --workspace` 通过。
+* 相关 C/C++ 测试通过。
+* 回滚开关仍然可用。

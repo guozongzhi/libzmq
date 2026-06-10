@@ -1,0 +1,19 @@
+[workspace]
+members = [
+    "libzmq-core",
+    "libzmq-ffi",
+    "libzmq-protocol",
+    "libzmq-transport",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MPL-2.0"
+rust-version = "1.70"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "deny"
