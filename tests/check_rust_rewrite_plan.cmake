@@ -7,8 +7,9 @@ endif()
 set(PLAN_FILE "${SOURCE_DIR}/doc/rust_rewrite_plan.adoc")
 set(PUBLIC_HEADER "${SOURCE_DIR}/include/zmq.h")
 set(C_API_FILE "${SOURCE_DIR}/src/zmq.cpp")
+set(UTILS_API_FILE "${SOURCE_DIR}/src/zmq_utils.cpp")
 
-foreach(required_file ${PLAN_FILE} ${PUBLIC_HEADER} ${C_API_FILE})
+foreach(required_file ${PLAN_FILE} ${PUBLIC_HEADER} ${C_API_FILE} ${UTILS_API_FILE})
   if(NOT EXISTS "${required_file}")
     message(FATAL_ERROR "Required file does not exist: ${required_file}")
   endif()
@@ -17,6 +18,8 @@ endforeach()
 file(READ "${PLAN_FILE}" PLAN_CONTENT)
 file(READ "${PUBLIC_HEADER}" HEADER_CONTENT)
 file(READ "${C_API_FILE}" C_API_CONTENT)
+file(READ "${UTILS_API_FILE}" UTILS_API_CONTENT)
+set(C_API_CONTENT "${C_API_CONTENT}${UTILS_API_CONTENT}")
 
 set(REQUIRED_PLAN_TERMS
   "== 目标"
@@ -27,6 +30,7 @@ set(REQUIRED_PLAN_TERMS
   "== FFI 和 unsafe 策略"
   "== 子模块迁移阶段"
   "=== 阶段 0：整体框架和编译环境"
+  "=== 阶段 0.5：Atomic counter 工具 API"
   "=== 阶段 1：消息模块"
   "=== 阶段 2：Context 生命周期"
   "=== 阶段 3：Socket base 和 inproc transport"
@@ -57,7 +61,9 @@ set(REQUIRED_PUBLIC_APIS
   "zmq_send"
   "zmq_recv"
   "zmq_poll"
-  "zmq_poller_new")
+  "zmq_poller_new"
+  "zmq_atomic_counter_new"
+  "zmq_atomic_counter_destroy")
 
 foreach(api ${REQUIRED_PUBLIC_APIS})
   string(FIND "${PLAN_CONTENT}" "${api}" plan_api_index)
@@ -79,7 +85,9 @@ set(REQUIRED_C_API_ENTRYPOINTS
   "zmq_send"
   "zmq_recv"
   "zmq_poll"
-  "zmq_poller_new")
+  "zmq_poller_new"
+  "zmq_atomic_counter_new"
+  "zmq_atomic_counter_destroy")
 
 foreach(api ${REQUIRED_C_API_ENTRYPOINTS})
   string(FIND "${C_API_CONTENT}" "${api}" c_api_index)
@@ -94,6 +102,7 @@ set(REQUIRED_RUST_FILES
   "rust/Cargo.lock"
   "rust/libzmq-core/Cargo.toml"
   "rust/libzmq-core/src/lib.rs"
+  "rust/libzmq-core/src/atomic_counter.rs"
   "rust/libzmq-core/src/message.rs"
   "rust/libzmq-core/src/context.rs"
   "rust/libzmq-ffi/Cargo.toml"

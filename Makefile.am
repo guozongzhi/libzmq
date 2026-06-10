@@ -1490,6 +1490,7 @@ EXTRA_DIST = \
 	rust/Cargo.lock \
 	rust/libzmq-core/Cargo.toml \
 	rust/libzmq-core/src/lib.rs \
+	rust/libzmq-core/src/atomic_counter.rs \
 	rust/libzmq-core/src/context.rs \
 	rust/libzmq-core/src/message.rs \
 	rust/libzmq-core/src/poller.rs \

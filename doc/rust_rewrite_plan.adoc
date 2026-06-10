@@ -117,7 +117,27 @@ Rust 代码必须把 unsafe 控制在 `libzmq-ffi` 和小型平台适配层中�
 * 新增 Cargo workspace 和最小 Rust crate 骨架。
 * 新增 `ENABLE_RUST_REWRITE` 和 `RUST_REWRITE_STRICT` CMake 开关。
 * CMake 启用 Rust 时通过 Cargo 编译 `libzmq-ffi` probe。
-* CI 先执行文档不变量测试和 `cargo test --workspace`。
+* 先把边界最小、无 socket 依赖的 `zmq_atomic_counter_*` 工具 API 作为第一条 Rust-backed 公共调用路径；C++ 公开符号保留，内部转发到 `zmq_rs_atomic_counter_*`。
+* CI 先执行文档不变量测试、`cargo test --workspace` 和 `test_atomics`。
+
+=== 阶段 0.5：Atomic counter 工具 API
+
+`zmq_atomic_counter_*` 不依赖 context、socket、pipe 或协议状态，是最适合作为第一条直接 Rust-backed C API 路径的模块。公开符号仍由 C++ 导出，启用 `ENABLE_RUST_REWRITE` 时转发到 Rust 内部符号。
+
+候选 API：
+
+* `zmq_atomic_counter_new`
+* `zmq_atomic_counter_set`
+* `zmq_atomic_counter_inc`
+* `zmq_atomic_counter_dec`
+* `zmq_atomic_counter_value`
+* `zmq_atomic_counter_destroy`
+
+验收标准：
+
+* 默认 C++ 构建不变。
+* Rust opt-in 构建可以链接 `libzmq-ffi` staticlib。
+* `test_atomics` 在 C++ 默认路径和 Rust opt-in 路径都通过。
 
 === 阶段 1：消息模块
 

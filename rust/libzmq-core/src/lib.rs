@@ -5,6 +5,7 @@
 //! the build and test pipeline can be validated before any public C ABI symbol
 //! is replaced.
 
+pub mod atomic_counter;
 pub mod context;
 pub mod message;
 pub mod poller;

@@ -1349,6 +1349,11 @@ if(ENABLE_RUST_REWRITE)
     set(RUST_WORKSPACE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust")
     set(RUST_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}/rust/target")
     set(RUST_REWRITE_PROBE_STAMP "${CMAKE_CURRENT_BINARY_DIR}/rust/rust_rewrite_probe.stamp")
+    if(WIN32)
+      set(RUST_FFI_STATICLIB "${RUST_TARGET_DIR}/debug/libzmq_ffi.lib")
+    else()
+      set(RUST_FFI_STATICLIB "${RUST_TARGET_DIR}/debug/liblibzmq_ffi.a")
+    endif()
 
     add_custom_command(
       OUTPUT ${RUST_REWRITE_PROBE_STAMP}
@@ -1361,6 +1366,7 @@ if(ENABLE_RUST_REWRITE)
               ${RUST_WORKSPACE_DIR}/Cargo.lock
               ${RUST_WORKSPACE_DIR}/libzmq-core/Cargo.toml
               ${RUST_WORKSPACE_DIR}/libzmq-core/src/lib.rs
+              ${RUST_WORKSPACE_DIR}/libzmq-core/src/atomic_counter.rs
               ${RUST_WORKSPACE_DIR}/libzmq-core/src/context.rs
               ${RUST_WORKSPACE_DIR}/libzmq-core/src/message.rs
               ${RUST_WORKSPACE_DIR}/libzmq-core/src/poller.rs
@@ -1539,7 +1545,18 @@ foreach(target ${build_targets})
   if(ENABLE_DRAFTS)
     target_compile_definitions(${target} PUBLIC ZMQ_BUILD_DRAFT_API)
   endif()
+
+  if(ENABLE_RUST_REWRITE AND CARGO_PROGRAM)
+    target_compile_definitions(${target} PRIVATE ZMQ_HAVE_RUST_REWRITE)
+  endif()
 endforeach()
+
+if(ENABLE_RUST_REWRITE AND CARGO_PROGRAM)
+  foreach(target ${target_outputs})
+    add_dependencies(${target} rust_rewrite_probe)
+    target_link_libraries(${target} ${RUST_FFI_STATICLIB})
+  endforeach()
+endif()
 
 if(BUILD_SHARED)
   target_link_libraries(libzmq ${CMAKE_THREAD_LIBS_INIT})

@@ -20,6 +20,17 @@
 #include "sodium.h"
 #endif
 
+#if defined ZMQ_HAVE_RUST_REWRITE
+extern "C" {
+void *zmq_rs_atomic_counter_new (void);
+void zmq_rs_atomic_counter_set (void *counter_, int value_);
+int zmq_rs_atomic_counter_inc (void *counter_);
+int zmq_rs_atomic_counter_dec (void *counter_);
+int zmq_rs_atomic_counter_value (void *counter_);
+void zmq_rs_atomic_counter_destroy (void **counter_p_);
+}
+#endif
+
 void zmq_sleep (int seconds_)
 {
 #if defined ZMQ_HAVE_WINDOWS
@@ -254,23 +265,35 @@ int zmq_curve_public (char *z85_public_key_, const char *z85_secret_key_)
 
 void *zmq_atomic_counter_new (void)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    return zmq_rs_atomic_counter_new ();
+#else
     zmq::atomic_counter_t *counter = new (std::nothrow) zmq::atomic_counter_t;
     alloc_assert (counter);
     return counter;
+#endif
 }
 
-//  Se the value of the atomic counter
+//  Set the value of the atomic counter
 
 void zmq_atomic_counter_set (void *counter_, int value_)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    zmq_rs_atomic_counter_set (counter_, value_);
+#else
     (static_cast<zmq::atomic_counter_t *> (counter_))->set (value_);
+#endif
 }
 
 //  Increment the atomic counter, and return the old value
 
 int zmq_atomic_counter_inc (void *counter_)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    return zmq_rs_atomic_counter_inc (counter_);
+#else
     return (static_cast<zmq::atomic_counter_t *> (counter_))->add (1);
+#endif
 }
 
 //  Decrement the atomic counter and return 1 (if counter >= 1), or
@@ -278,20 +301,32 @@ int zmq_atomic_counter_inc (void *counter_)
 
 int zmq_atomic_counter_dec (void *counter_)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    return zmq_rs_atomic_counter_dec (counter_);
+#else
     return (static_cast<zmq::atomic_counter_t *> (counter_))->sub (1) ? 1 : 0;
+#endif
 }
 
 //  Return actual value of atomic counter
 
 int zmq_atomic_counter_value (void *counter_)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    return zmq_rs_atomic_counter_value (counter_);
+#else
     return (static_cast<zmq::atomic_counter_t *> (counter_))->get ();
+#endif
 }
 
 //  Destroy atomic counter, and set reference to NULL
 
 void zmq_atomic_counter_destroy (void **counter_p_)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    zmq_rs_atomic_counter_destroy (counter_p_);
+#else
     delete (static_cast<zmq::atomic_counter_t *> (*counter_p_));
     *counter_p_ = NULL;
+#endif
 }
