@@ -75,6 +75,15 @@ AC_PROG_AWK
 PKG_PROG_PKG_CONFIG
 m4_pattern_forbid([^PKG_[A-Z_]+$], [missing some pkg-config macros (pkg-config package)])
 
+AC_ARG_ENABLE([rust-rewrite],
+    [AS_HELP_STRING([--enable-rust-rewrite],
+        [experimental Rust rewrite support, currently available only with CMake @<:@default=no@:>@])],
+    [enable_rust_rewrite=$enableval],
+    [enable_rust_rewrite=no])
+
+AS_IF([test "x$enable_rust_rewrite" != "xno"],
+    [AC_MSG_ERROR([--enable-rust-rewrite is currently supported only by the CMake build])])
+
 # Libtool configuration for different targets. See acinclude.m4
 LIBZMQ_CONFIG_LIBTOOL
 AC_LIBTOOL_WIN32_DLL

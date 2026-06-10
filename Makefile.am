@@ -1482,8 +1482,26 @@ EXTRA_DIST = \
 	src/libzmq.vers \
 	src/version.rc.in \
 	tests/CMakeLists.txt \
+	tests/check_rust_rewrite_plan.cmake \
         tests/test_pair_tcp_cap_net_admin.cpp \
 	unittests/CMakeLists.txt \
+	rust/.gitignore \
+	rust/Cargo.toml \
+	rust/Cargo.lock \
+	rust/libzmq-core/Cargo.toml \
+	rust/libzmq-core/src/lib.rs \
+	rust/libzmq-core/src/context.rs \
+	rust/libzmq-core/src/message.rs \
+	rust/libzmq-core/src/poller.rs \
+	rust/libzmq-core/src/socket.rs \
+	rust/libzmq-ffi/Cargo.toml \
+	rust/libzmq-ffi/src/lib.rs \
+	rust/libzmq-protocol/Cargo.toml \
+	rust/libzmq-protocol/src/lib.rs \
+	rust/libzmq-protocol/src/zmtp.rs \
+	rust/libzmq-transport/Cargo.toml \
+	rust/libzmq-transport/src/lib.rs \
+	rust/libzmq-transport/src/inproc.rs \
         tools/curve_keygen.cpp
 
 MAINTAINERCLEANFILES = \
