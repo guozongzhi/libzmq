@@ -1495,6 +1495,8 @@ EXTRA_DIST = \
 	rust/libzmq-core/src/message.rs \
 	rust/libzmq-core/src/poller.rs \
 	rust/libzmq-core/src/socket.rs \
+	rust/libzmq-core/src/version.rs \
+	rust/libzmq-core/src/z85.rs \
 	rust/libzmq-ffi/Cargo.toml \
 	rust/libzmq-ffi/src/lib.rs \
 	rust/libzmq-protocol/Cargo.toml \

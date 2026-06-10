@@ -22,6 +22,8 @@
 
 #if defined ZMQ_HAVE_RUST_REWRITE
 extern "C" {
+char *zmq_rs_z85_encode (char *dest_, const uint8_t *data_, size_t size_);
+uint8_t *zmq_rs_z85_decode (uint8_t *dest_, const char *string_);
 void *zmq_rs_atomic_counter_new (void);
 void zmq_rs_atomic_counter_set (void *counter_, int value_);
 int zmq_rs_atomic_counter_inc (void *counter_);
@@ -111,6 +113,12 @@ static uint8_t decoder[96] = {
 
 char *zmq_z85_encode (char *dest_, const uint8_t *data_, size_t size_)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    char *result = zmq_rs_z85_encode (dest_, data_, size_);
+    if (result == NULL)
+        errno = EINVAL;
+    return result;
+#else
     if (size_ % 4 != 0) {
         errno = EINVAL;
         return NULL;
@@ -134,6 +142,7 @@ char *zmq_z85_encode (char *dest_, const uint8_t *data_, size_t size_)
     assert (char_nbr == size_ * 5 / 4);
     dest_[char_nbr] = 0;
     return dest_;
+#endif
 }
 
 
@@ -145,6 +154,12 @@ char *zmq_z85_encode (char *dest_, const uint8_t *data_, size_t size_)
 
 uint8_t *zmq_z85_decode (uint8_t *dest_, const char *string_)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    uint8_t *result = zmq_rs_z85_decode (dest_, string_);
+    if (result == NULL)
+        errno = EINVAL;
+    return result;
+#else
     unsigned int byte_nbr = 0;
     unsigned int char_nbr = 0;
     uint32_t value = 0;
@@ -190,6 +205,7 @@ uint8_t *zmq_z85_decode (uint8_t *dest_, const char *string_)
 error_inval:
     errno = EINVAL;
     return NULL;
+#endif
 }
 
 //  --------------------------------------------------------------------------

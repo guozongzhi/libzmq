@@ -85,11 +85,19 @@ typedef char
   check_msg_t_size[sizeof (zmq::msg_t) == sizeof (zmq_msg_t) ? 1 : -1];
 
 
+#if defined ZMQ_HAVE_RUST_REWRITE
+extern "C" void zmq_rs_version (int *major_, int *minor_, int *patch_);
+#endif
+
 void zmq_version (int *major_, int *minor_, int *patch_)
 {
+#if defined ZMQ_HAVE_RUST_REWRITE
+    zmq_rs_version (major_, minor_, patch_);
+#else
     *major_ = ZMQ_VERSION_MAJOR;
     *minor_ = ZMQ_VERSION_MINOR;
     *patch_ = ZMQ_VERSION_PATCH;
+#endif
 }
 
 

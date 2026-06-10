@@ -1371,6 +1371,8 @@ if(ENABLE_RUST_REWRITE)
               ${RUST_WORKSPACE_DIR}/libzmq-core/src/message.rs
               ${RUST_WORKSPACE_DIR}/libzmq-core/src/poller.rs
               ${RUST_WORKSPACE_DIR}/libzmq-core/src/socket.rs
+              ${RUST_WORKSPACE_DIR}/libzmq-core/src/version.rs
+              ${RUST_WORKSPACE_DIR}/libzmq-core/src/z85.rs
               ${RUST_WORKSPACE_DIR}/libzmq-ffi/Cargo.toml
               ${RUST_WORKSPACE_DIR}/libzmq-ffi/src/lib.rs
               ${RUST_WORKSPACE_DIR}/libzmq-protocol/Cargo.toml

@@ -118,7 +118,8 @@ Rust 代码必须把 unsafe 控制在 `libzmq-ffi` 和小型平台适配层中�
 * 新增 `ENABLE_RUST_REWRITE` 和 `RUST_REWRITE_STRICT` CMake 开关。
 * CMake 启用 Rust 时通过 Cargo 编译 `libzmq-ffi` probe。
 * 先把边界最小、无 socket 依赖的 `zmq_atomic_counter_*` 工具 API 作为第一条 Rust-backed 公共调用路径；C++ 公开符号保留，内部转发到 `zmq_rs_atomic_counter_*`。
-* CI 先执行文档不变量测试、`cargo test --workspace` 和 `test_atomics`。
+* 随后迁移同样无 socket/context 依赖的 `zmq_version`，验证 `src/zmq.cpp` 的 C ABI shim 也能按 opt-in 方式转发到 Rust。
+* CI 先执行文档不变量测试、`cargo test --workspace`、`test_atomics`、`test_ancillaries` 和 `test_base85`。
 
 === 阶段 0.5：Atomic counter 工具 API
 
@@ -138,6 +139,25 @@ Rust 代码必须把 unsafe 控制在 `libzmq-ffi` 和小型平台适配层中�
 * 默认 C++ 构建不变。
 * Rust opt-in 构建可以链接 `libzmq-ffi` staticlib。
 * `test_atomics` 在 C++ 默认路径和 Rust opt-in 路径都通过。
+
+=== 阶段 0.6：Version API
+
+`zmq_version` 是无状态 API，适合作为 `src/zmq.cpp` 中第一条 opt-in Rust-backed C ABI shim。公开符号仍由 C++ 导出；启用 Rust rewrite 后，C++ wrapper 调用 `zmq_rs_version` 写入 major/minor/patch。
+
+验收标准：
+
+* Rust 常量与 `include/zmq.h` 中的 `ZMQ_VERSION_MAJOR`、`ZMQ_VERSION_MINOR`、`ZMQ_VERSION_PATCH` 同步。
+* `test_ancillaries` 在默认 C++ 路径和 Rust opt-in 路径都通过。
+
+=== 阶段 0.7：Z85 codec
+
+`zmq_z85_encode` 和 `zmq_z85_decode` 是纯编码/解码 API，不依赖 socket、context、线程或 I/O。启用 Rust rewrite 后，C++ public wrapper 转发到 `zmq_rs_z85_encode` / `zmq_rs_z85_decode`，并继续在 C++ wrapper 中设置 `errno = EINVAL`。
+
+验收标准：
+
+* RFC32 `HelloWorld` 测试向量保持兼容。
+* 非 4 字节倍数 encode、非 5 字节倍数 decode、非法字符和溢出值继续返回 `NULL` 并设置 `EINVAL`。
+* `test_base85` 在默认 C++ 路径和 Rust opt-in 路径都通过。
 
 === 阶段 1：消息模块
 

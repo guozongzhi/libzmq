@@ -10,6 +10,8 @@ pub mod context;
 pub mod message;
 pub mod poller;
 pub mod socket;
+pub mod version;
+pub mod z85;
 
 /// Current Rust rewrite scaffold version.
 pub const RUST_REWRITE_PROBE_VERSION: u32 = 1;

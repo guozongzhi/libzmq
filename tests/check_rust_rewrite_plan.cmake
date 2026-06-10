@@ -31,6 +31,8 @@ set(REQUIRED_PLAN_TERMS
   "== 子模块迁移阶段"
   "=== 阶段 0：整体框架和编译环境"
   "=== 阶段 0.5：Atomic counter 工具 API"
+  "=== 阶段 0.6：Version API"
+  "=== 阶段 0.7：Z85 codec"
   "=== 阶段 1：消息模块"
   "=== 阶段 2：Context 生命周期"
   "=== 阶段 3：Socket base 和 inproc transport"
@@ -42,7 +44,10 @@ set(REQUIRED_PLAN_TERMS
   "src/zmq.cpp"
   "ENABLE_RUST_REWRITE"
   "RUST_REWRITE_STRICT"
-  "zmq_rs_version_probe")
+  "zmq_rs_version_probe"
+  "zmq_version"
+  "zmq_z85_encode"
+  "zmq_z85_decode")
 
 foreach(term ${REQUIRED_PLAN_TERMS})
   string(FIND "${PLAN_CONTENT}" "${term}" term_index)
@@ -63,7 +68,10 @@ set(REQUIRED_PUBLIC_APIS
   "zmq_poll"
   "zmq_poller_new"
   "zmq_atomic_counter_new"
-  "zmq_atomic_counter_destroy")
+  "zmq_atomic_counter_destroy"
+  "zmq_version"
+  "zmq_z85_encode"
+  "zmq_z85_decode")
 
 foreach(api ${REQUIRED_PUBLIC_APIS})
   string(FIND "${PLAN_CONTENT}" "${api}" plan_api_index)
@@ -87,7 +95,8 @@ set(REQUIRED_C_API_ENTRYPOINTS
   "zmq_poll"
   "zmq_poller_new"
   "zmq_atomic_counter_new"
-  "zmq_atomic_counter_destroy")
+  "zmq_atomic_counter_destroy"
+  "zmq_version")
 
 foreach(api ${REQUIRED_C_API_ENTRYPOINTS})
   string(FIND "${C_API_CONTENT}" "${api}" c_api_index)
@@ -105,6 +114,8 @@ set(REQUIRED_RUST_FILES
   "rust/libzmq-core/src/atomic_counter.rs"
   "rust/libzmq-core/src/message.rs"
   "rust/libzmq-core/src/context.rs"
+  "rust/libzmq-core/src/version.rs"
+  "rust/libzmq-core/src/z85.rs"
   "rust/libzmq-ffi/Cargo.toml"
   "rust/libzmq-ffi/src/lib.rs"
   "rust/libzmq-protocol/Cargo.toml"
